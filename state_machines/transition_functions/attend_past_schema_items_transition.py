@@ -29,26 +29,26 @@ class AttendPastSchemaItemsTransitionFunction(BasicTransitionFunction):
         super().__init__(encoder_output_dim=encoder_output_dim,
                          action_embedding_dim=action_embedding_dim,
                          input_attention=input_attention,
-                         num_start_types=num_start_types,
                          activation=activation,
-                         predict_start_type_separately=predict_start_type_separately,
                          add_action_bias=add_action_bias,
                          dropout=dropout,
                          num_layers=num_layers)
 
         self._past_attention = past_attention
         self._ent2ent_ff = FeedForward(1, 1, 1, Activation.by_name('linear')())
+        self._action2gate = FeedForward(201, 1, 1, Activation.by_name('sigmoid')())
+        self._output_type_projection_layer = Linear(encoder_output_dim + encoder_output_dim, action_embedding_dim)
 
     @overrides
     def take_step(self,
                   state: GrammarBasedState,
                   max_actions: int = None,
                   allowed_actions: List[Set[int]] = None) -> List[GrammarBasedState]:
-        if self._predict_start_type_separately and not state.action_history[0]:
+        # if self._predict_start_type_separately and not state.action_history[0]:
             # The wikitables parser did something different when predicting the start type, which
             # is our first action.  So in this case we break out into a different function.  We'll
             # ignore max_actions on our first step, assuming there aren't that many start types.
-            return self._take_first_step(state, allowed_actions)
+            # return self._take_first_step(state, allowed_actions)
 
         # Taking a step in the decoder consists of three main parts.  First, we'll construct the
         # input to the decoder and update the decoder's hidden state.  Second, we'll use this new
@@ -62,7 +62,8 @@ class AttendPastSchemaItemsTransitionFunction(BasicTransitionFunction):
                                                            updated_state['hidden_state'],
                                                            updated_state['attention_weights'],
                                                            updated_state['past_schema_items_attention_weights'],
-                                                           updated_state['predicted_action_embeddings'])
+                                                           updated_state['predicted_action_embeddings'],
+                                                           updated_state['predicted_type_embeddings'])
         new_states = self._construct_next_states(state,
                                                  updated_state,
                                                  batch_results,
@@ -78,12 +79,20 @@ class AttendPastSchemaItemsTransitionFunction(BasicTransitionFunction):
 
         group_size = len(state.batch_indices)
         attended_question = torch.stack([rnn_state.attended_input for rnn_state in state.rnn_state])
+
+        last_hidden_state = torch.zeros_like(state.rnn_state[0].hidden_state)
+        last_cell_state = torch.zeros_like(state.rnn_state[0].memory_cell)
+        if state.interaction_state is not None and len(state.action_history) == 0:
+            last_hidden_cell = state.interaction_state.get_last_dec_lstm_states()
+            if last_hidden_cell is not None:
+                last_hidden_state, last_cell_state = last_hidden_cell
+
         if self._num_layers > 1:
-            hidden_state = torch.stack([rnn_state.hidden_state for rnn_state in state.rnn_state], 1)
-            memory_cell = torch.stack([rnn_state.memory_cell for rnn_state in state.rnn_state], 1)
+            hidden_state = torch.stack([rnn_state.hidden_state + last_hidden_state for rnn_state in state.rnn_state], 1)
+            memory_cell = torch.stack([rnn_state.memory_cell + last_cell_state for rnn_state in state.rnn_state], 1)
         else:
-            hidden_state = torch.stack([rnn_state.hidden_state for rnn_state in state.rnn_state])
-            memory_cell = torch.stack([rnn_state.memory_cell for rnn_state in state.rnn_state])
+            hidden_state = torch.stack([rnn_state.hidden_state + last_hidden_state for rnn_state in state.rnn_state])
+            memory_cell = torch.stack([rnn_state.memory_cell + last_cell_state for rnn_state in state.rnn_state])
 
         previous_action_embedding = torch.stack([rnn_state.previous_action_embedding
                                                  for rnn_state in state.rnn_state])
@@ -99,7 +108,7 @@ class AttendPastSchemaItemsTransitionFunction(BasicTransitionFunction):
             hidden_state, memory_cell = self._decoder_cell(decoder_input, (hidden_state, memory_cell))
         hidden_state = self._dropout(hidden_state)
 
-        # (group_size, encoder_output_dim)
+        # (group_size, num_question_tokens, encoder_output_dim)
         encoder_outputs = torch.stack([state.rnn_state[0].encoder_outputs[i] for i in state.batch_indices])
         encoder_output_mask = torch.stack([state.rnn_state[0].encoder_output_mask[i] for i in state.batch_indices])
 
@@ -112,6 +121,7 @@ class AttendPastSchemaItemsTransitionFunction(BasicTransitionFunction):
             attended_question, attention_weights = self.attend_on_question(hidden_state,
                                                                            encoder_outputs,
                                                                            encoder_output_mask)
+            # (group_size, encoder_output_dim*2)
             action_query = torch.cat([hidden_state, attended_question], dim=-1)
 
         # TODO: Can batch this (need to save ids of states with saved outputs)
@@ -130,6 +140,8 @@ class AttendPastSchemaItemsTransitionFunction(BasicTransitionFunction):
         # (group_size, action_embedding_dim)
         projected_query = self._activation(self._output_projection_layer(action_query))
         predicted_action_embeddings = self._dropout(projected_query)
+        projected_query = self._activation(self._output_type_projection_layer(action_query))
+        predicted_type_embeddings = self._dropout(projected_query)
         if self._add_action_bias:
             # NOTE: It's important that this happens right before the dot product with the action
             # embeddings.  Otherwise this isn't a proper bias.  We do it here instead of right next
@@ -143,6 +155,7 @@ class AttendPastSchemaItemsTransitionFunction(BasicTransitionFunction):
                 'attention_weights': attention_weights,
                 'past_schema_items_attention_weights': past_schema_items_attention_weights,
                 'predicted_action_embeddings': predicted_action_embeddings,
+                'predicted_type_embeddings': predicted_type_embeddings,
                 }
 
     @overrides
@@ -151,7 +164,8 @@ class AttendPastSchemaItemsTransitionFunction(BasicTransitionFunction):
                                       hidden_state: torch.Tensor,
                                       attention_weights: torch.Tensor,
                                       past_schema_items_attention_weights: torch.Tensor,
-                                      predicted_action_embeddings: torch.Tensor
+                                      predicted_action_embeddings: torch.Tensor,
+                                      predicted_type_embeddings: torch.Tensor,
                                       ) -> Dict[int, List[Tuple[int, Any, Any, Any, List[int]]]]:
         # In this section we take our predicted action embedding and compare it to the available
         # actions in our current state (which might be different for each group element).  For
@@ -201,12 +215,14 @@ class AttendPastSchemaItemsTransitionFunction(BasicTransitionFunction):
 
                     linked_action_ent2ent_logits = past_entity_linking_scores.mm(
                         past_items_attention_weights.unsqueeze(-1)).squeeze(-1)
-                    linked_action_ent2ent_logits = self._ent2ent_ff(linked_action_ent2ent_logits.unsqueeze(-1)).squeeze(1)
+                    # linked_action_ent2ent_logits = self._ent2ent_ff(linked_action_ent2ent_logits.unsqueeze(-1)).squeeze(1)
                 else:
                     linked_action_ent2ent_logits = 0
 
                 linked_action_logits_encoder = linking_scores.mm(attention_weights[group_index].unsqueeze(-1)).squeeze(-1)
-                linked_action_logits = linked_action_logits_encoder + linked_action_ent2ent_logits
+                # linked_action_logits_encoder = type_embeddings.mm(predicted_type_embeddings[group_index].unsqueeze(-1)).squeeze(-1)
+                gate = self._action2gate(predicted_action_embedding)
+                linked_action_logits = gate * linked_action_logits_encoder + (1-gate) * linked_action_ent2ent_logits
 
                 # The `output_action_embeddings` tensor gets used later as the input to the next
                 # decoder step.  For linked actions, we don't have any action embedding, so we use

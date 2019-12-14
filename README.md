@@ -1,16 +1,13 @@
-# Representing Schema Structure with Graph Neural Networks for Text-to-SQL Parsing
+# Context Dependent Text-to-SQL Semantic Parsing
 
-Author implementation of this [ACL 2019 paper](https://arxiv.org/abs/1905.06241).
+This's based on a fork from the author implementation of the ACL 2019 paper: [Representing Schema Structure with Graph Neural Networks for Text-to-SQL Parsing](https://arxiv.org/abs/1905.06241).
 
 ## Install & Configure
 
-1. Install pytorch version 1.0.1.post2 that fits your CUDA version 
-   
-   (this repository should probably work with the latest pytorch version, but wasn't tested for it. If you use another version, you'll need to also update the versions of packages in `requirements.txt`)
-    ```
-    pip install https://download.pytorch.org/whl/cu100/torch-1.0.1.post2-cp37-cp37m-linux_x86_64.whl # CUDA 10.0 build
-    ```
-    
+1. Install pytorch version 1.2.0 that fits your CUDA version 
+
+(Different from the origial implementation, this repository use the latest version of pytorch and other packages.)
+
 2. Install the rest of required packages
     ```
     pip install -r requirements.txt
@@ -27,6 +24,8 @@ python -c "import nltk; nltk.download('punkt')"
 ```
 local dataset_path = "dataset/";
 ```
+
+6. **Before preprocessing the dataset, modify [two](https://github.com/allenai/allennlp/blob/v0.9.0/allennlp/data/fields/knowledge_graph_field.py#L99) [lines](https://github.com/allenai/allennlp/blob/v0.9.0/allennlp/data/fields/knowledge_graph_field.py#L109) in allennlp lib, to replace `self._tokenizer` with `_tokenizer`. This change greatly reduces the size of cache data and memory usage.** Also, change the number of processes in `dataset_readers/spider.py` according to your machine setting.
 
 ## Training
 
@@ -72,3 +71,7 @@ allennlp predict experiments/name_of_experiment dataset/dev.json \
 --weights-file experiments/name_of_experiment/best.th \
 -o "{\"dataset_reader\":{\"keep_if_unparsable\":true}}"
 ```
+
+## Debug
+
+Refer to [AllenNLP](https://github.com/allenai/allennlp/blob/master/tutorials/how_to/using_a_debugger.md), use `run.py` for debugging.

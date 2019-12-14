@@ -1,11 +1,11 @@
-local dataset_path = "dataset/";
+local dataset_path = "sparc/";
 
 {
   "random_seed": 5,
   "numpy_seed": 5,
   "pytorch_seed": 5,
   "dataset_reader": {
-    "type": "spider",
+    "type": "sparc",
     "tables_file": dataset_path + "tables.json",
     "dataset_path": dataset_path + "database",
     "lazy": false,
@@ -13,14 +13,17 @@ local dataset_path = "dataset/";
     "loading_limit": -1
   },
   "validation_dataset_reader": {
-    "type": "spider",
+    "type": "sparc",
     "tables_file": dataset_path + "tables.json",
     "dataset_path": dataset_path + "database",
     "lazy": false,
     "keep_if_unparsable": true,
     "loading_limit": -1
   },
-  "train_data_path": dataset_path + "train_spider.json",
+//  "vocabulary": {
+//    "directory_path": "vocab"
+//  },
+  "train_data_path": dataset_path + "train.json",
   "validation_data_path": dataset_path + "dev.json",
   "model": {
     "type": "spider",
@@ -30,7 +33,8 @@ local dataset_path = "dataset/";
     "gnn_timesteps": 3,
     "decoder_self_attend": true,
     "decoder_use_graph_entities": true,
-    "use_neighbor_similarity_for_linking": true,
+    "use_neighbor_similarity_for_linking": false,
+    "use_glove": false,
     "question_embedder": {
       "tokens": {
         "type": "embedding",
@@ -56,13 +60,14 @@ local dataset_path = "dataset/";
     },
     "training_beam_size": 1,
     "max_decoding_steps": 100,
+    "graph_attention": {"type": "additive", "vector_dim": "400", "matrix_dim": "200", "normalize": true},
     "input_attention": {"type": "dot_product"},
     "past_attention": {"type": "dot_product"},
     "dropout": 0.5
   },
   "iterator": {
     "type": "basic",
-    "batch_size" : 15
+    "batch_size" : 1
   },
   "validation_iterator": {
     "type": "basic",

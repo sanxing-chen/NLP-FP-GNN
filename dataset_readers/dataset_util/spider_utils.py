@@ -5,6 +5,7 @@ Utility functions for reading the standardised text2sql datasets presented in
 import json
 import os
 import sqlite3
+import sqlparse
 from collections import defaultdict
 from typing import List, Dict, Optional
 
@@ -270,3 +271,38 @@ def disambiguate_items(db_id: str, query_toks: List[str], tables_file: str, allo
     toks = [f'\'value\'' if tok == '"value"' else tok for tok in toks]
 
     return toks
+
+# Method from https://github.com/ryanzhumich/editsql/blob/master/data_util/tokenizers.py
+def sql_tokenize(string):
+    """ Tokenizes a SQL statement into tokens.
+    Inputs:
+       string: string to tokenize.
+    Outputs:
+       a list of tokens.
+    """
+    tokens = []
+    statements = sqlparse.parse(string)
+
+    # SQLparse gives you a list of statements.
+    for statement in statements:
+        # Flatten the tokens in each statement and add to the tokens list.
+        flat_tokens = sqlparse.sql.TokenList(statement.tokens).flatten()
+        for token in flat_tokens:
+            strip_token = str(token).strip()
+            if len(strip_token) > 0:
+                tokens.append(strip_token)
+
+    newtokens = []
+    keep = True
+    for i, token in enumerate(tokens):
+        if token == ".":
+            newtoken = newtokens[-1] + "." + tokens[i + 1]
+            newtokens = newtokens[:-1] + [newtoken]
+            keep = False
+        elif keep:
+            newtokens.append(token)
+        else:
+            keep = True
+
+    return newtokens
+

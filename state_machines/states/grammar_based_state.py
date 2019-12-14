@@ -6,6 +6,7 @@ from allennlp.data.fields.production_rule_field import ProductionRule
 from allennlp.state_machines.states.grammar_statelet import GrammarStatelet
 from allennlp.state_machines.states.rnn_statelet import RnnStatelet
 from allennlp.state_machines.states.state import State
+from .interaction_state import InteractionState
 
 # This syntax is pretty weird and ugly, but it's necessary to make mypy happy with the API that
 # we've defined.  We're using generics to make the type of `combine_states` come out right.  See
@@ -64,6 +65,7 @@ class GrammarBasedState(State['GrammarBasedState']):
                  sql_state: List[SqlState],
                  possible_actions: List[List[ProductionRule]],
                  action_entity_mapping: List[Dict[int, int]],
+                 interaction_state: InteractionState = None,
                  extras: List[Any] = None,
                  debug_info: List = None) -> None:
         super().__init__(batch_indices, action_history, score)
@@ -74,6 +76,7 @@ class GrammarBasedState(State['GrammarBasedState']):
         self.action_entity_mapping = action_entity_mapping
         self.extras = extras
         self.debug_info = debug_info
+        self.interaction_state = interaction_state
 
     def new_state_from_group_index(self,
                                    group_index: int,
@@ -155,5 +158,6 @@ class GrammarBasedState(State['GrammarBasedState']):
                                  sql_state=sql_states,
                                  possible_actions=states[0].possible_actions,
                                  action_entity_mapping=states[0].action_entity_mapping,
+                                 interaction_state=states[0].interaction_state,
                                  extras=states[0].extras,
                                  debug_info=debug_info)

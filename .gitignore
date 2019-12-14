@@ -1,0 +1,10 @@
+cache
+spider
+spider.zip
+*.pyc
+.vscode
+vocab
+*.png
+*experiments
+glove.*
+sparc/database

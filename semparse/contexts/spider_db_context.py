@@ -39,7 +39,7 @@ class SpiderDBContext:
         self.utterance = utterance
 
         tokenized_utterance = tokenizer.tokenize(utterance.lower())
-        self.tokenized_utterance = [Token(text=t.text, lemma=t.lemma_) for t in tokenized_utterance]
+        self.tokenized_utterance = [Token(text=t.text, lemma_=t.lemma_) for t in tokenized_utterance]
 
         if db_id not in SpiderDBContext.schemas:
             SpiderDBContext.schemas = read_dataset_schema(self.tables_file)
@@ -50,7 +50,7 @@ class SpiderDBContext:
         entity_texts = [self.knowledge_graph.entity_text[entity].lower()
                         for entity in self.knowledge_graph.entities]
         entity_tokens = tokenizer.batch_tokenize(entity_texts)
-        self.entity_tokens = [[Token(text=t.text, lemma=t.lemma_) for t in et] for et in entity_tokens]
+        self.entity_tokens = [[Token(text=t.text, lemma_=t.lemma_) for t in et] for et in entity_tokens]
 
     @staticmethod
     def entity_key_for_column(table_name: str, column: TableColumn) -> str:
@@ -86,7 +86,8 @@ class SpiderDBContext:
                         column_key = self.entity_key_for_column(table.name, column)
                         string_column_mapping[cell_value_normalized].add(column_key)
 
-        string_entities = self.get_entities_from_question(string_column_mapping)
+        # string_entities = self.get_entities_from_question(string_column_mapping)
+        string_entities = []
 
         for table in tables:
             table_key = f"table:{table.name.lower()}"

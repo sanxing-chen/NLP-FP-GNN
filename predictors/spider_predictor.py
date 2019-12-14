@@ -15,11 +15,12 @@ class WikiTablesParserPredictor(Predictor):
     def predict_instance(self, instance: Instance) -> JsonDict:
         json_output = {}
         outputs = self._model.forward_on_instance(instance)
-        predicted_sql_query = outputs['predicted_sql_query'].replace('\n', ' ')
-        if predicted_sql_query == '':
-            # line must not be empty for the evaluator to consider it
-            predicted_sql_query = 'NO PREDICTION'
-        json_output['predicted_sql_query'] = predicted_sql_query
+        # predicted_sql_query = outputs['predicted_sql_query'].replace('\n', ' ')
+        # if predicted_sql_query == '':
+        #     # line must not be empty for the evaluator to consider it
+        #     predicted_sql_query = 'NO PREDICTION'
+        # json_output['predicted_sql_query'] = predicted_sql_query
+        json_output['predicted_sql_query'] = '\n'.join(outputs['predicted_sql_query'])
         return sanitize(json_output)
 
     @overrides
